@@ -2,6 +2,7 @@
 
 import os
 import sys
+import asyncio
 import logging
 from dotenv import load_dotenv
 
@@ -174,13 +175,29 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     if WEBHOOK_URL:
-        logger.info(f"Iniciando em modo webhook: {WEBHOOK_URL}")
-        app.run_webhook(
-            listen="0.0.0.0",
-            port=PORT,
-            webhook_url=WEBHOOK_URL,
-            drop_pending_updates=True,
-        )
+        logger.info(f"Tentando modo webhook: {WEBHOOK_URL}")
+        try:
+            app.run_webhook(
+                listen="0.0.0.0",
+                port=PORT,
+                webhook_url=WEBHOOK_URL,
+                drop_pending_updates=True,
+            )
+        except Exception as e:
+            logger.warning(f"Webhook falhou: {e}")
+            logger.warning("Fallback para polling...")
+            app = Application.builder().token(TELEGRAM_TOKEN).build()
+            app.add_handler(CommandHandler("start", start))
+            app.add_handler(CommandHandler("help", help_cmd))
+            app.add_handler(CommandHandler("status", status_cmd))
+            app.add_handler(CommandHandler("discos", discos_cmd))
+            app.add_handler(CommandHandler("ram", ram_cmd))
+            app.add_handler(CommandHandler("containers", containers_cmd))
+            app.add_handler(CommandHandler("servicos", servicos_cmd))
+            app.add_handler(CommandHandler("logs", logs_cmd))
+            app.add_handler(CommandHandler("limpar", limpar_cmd))
+            app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+            app.run_polling(drop_pending_updates=True)
     else:
         logger.info("Iniciando em modo polling...")
         app.run_polling(drop_pending_updates=True)
@@ -188,3 +205,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
