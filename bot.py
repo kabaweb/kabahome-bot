@@ -178,25 +178,21 @@ def main():
         logger.info(f"Tentando registrar webhook: {WEBHOOK_URL}")
         webhook_ok = False
         try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(
-                app.bot.set_webhook(
-                    url=f"{WEBHOOK_URL}",
-                    drop_pending_updates=True,
-                )
-            )
-            loop.close()
-            webhook_info = asyncio.new_event_loop()
-            asyncio.set_event_loop(webhook_info)
-            info = webhook_info.run_until_complete(app.bot.get_webhook_info())
-            webhook_info.close()
+            asyncio.run(app.bot.set_webhook(
+                url=WEBHOOK_URL,
+                drop_pending_updates=True,
+            ))
+            info = asyncio.run(app.bot.get_webhook_info())
             logger.info(f"Webhook registrado: {info.url}")
             webhook_ok = True
         except Exception as e:
             logger.warning(f"Falha ao registrar webhook: {e}")
             logger.warning("Usando polling como fallback...")
             webhook_ok = False
+
+        # asyncio.run() closes the event loop, recreate for run_polling/run_webhook
+        new_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(new_loop)
 
         if webhook_ok:
             logger.info(f"Iniciando servidor webhook na porta {PORT}...")
