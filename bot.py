@@ -198,48 +198,20 @@ def main():
     app.add_handler(CommandHandler("limpar", limpar_cmd))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    webhook_ok = False
+    # Start health check HTTP server for Cloudflare tunnel
+    # This prevents 502 Bad Gateway when accessing https://bot.kabaweb.in/
+    # The health server responds to GET / with status 200
+    start_health_server(PORT)
+    logger.info(f"Health check server rodando na porta {PORT}")
 
+    # Always use polling - it's more reliable and avoids event loop issues
+    # Note: we do NOT register a webhook because that would disable polling
     if WEBHOOK_URL:
-        # Start health server FIRST (before webhook attempt)
-        start_health_server(PORT)
+        logger.info(f"WEBHOOK_URL configurada ({WEBHOOK_URL}) mas usando polling para estabilidade")
+        logger.info("O health server HTTP responde ao Cloudflare Tunnel na mesma porta")
 
-        logger.info(f"Tentando registrar webhook: {WEBHOOK_URL}")
-        try:
-            # Use a single event loop for both operations (fixes Event loop is closed bug)
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(app.bot.set_webhook(
-                url=WEBHOOK_URL,
-                drop_pending_updates=True,
-            ))
-            info = loop.run_until_complete(app.bot.get_webhook_info())
-            logger.info(f"Webhook registrado: {info.url}")
-            webhook_ok = True
-        except Exception as e:
-            logger.warning(f"Falha ao registrar webhook: {e}")
-            logger.warning("Usando polling como fallback...")
-            webhook_ok = False
-
-        # Create a fresh event loop for the application (don't reuse closed one)
-        asyncio.set_event_loop(asyncio.new_event_loop())
-
-        if webhook_ok:
-            logger.info(f"Iniciando servidor webhook na porta {PORT}...")
-            app.run_webhook(
-                listen="0.0.0.0",
-                port=PORT,
-                webhook_url=WEBHOOK_URL,
-                drop_pending_updates=True,
-            )
-        else:
-            logger.info("Iniciando em modo polling (health server ja ativo)...")
-            app.run_polling(drop_pending_updates=True)
-    else:
-        # No webhook URL configured, just polling + health server
-        start_health_server(PORT)
-        logger.info("Iniciando em modo polling...")
-        app.run_polling(drop_pending_updates=True)
+    logger.info("Iniciando em modo polling...")
+    app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
     main()
