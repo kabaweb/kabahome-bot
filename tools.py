@@ -212,3 +212,87 @@ TOOL_EXECUTORS = {
     "docker_restart_service": docker_restart_service,
     "uptime": uptime,
 }
+
+
+# --- Database tools (shared memory) ---
+from db_tools import (
+    get_session_summary,
+    add_action,
+    get_pending,
+    update_context,
+    mark_done,
+)
+
+AVAILABLE_TOOLS.extend([
+    {
+        "type": "function",
+        "function": {
+            "name": "get_session_summary",
+            "description": "Get complete summary of the current session: pending items, recent actions, and current server state.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "add_action",
+            "description": "Register a new action in the shared memory database.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action_type": {"type": "string", "description": "Type: install, config, fix, diagnostic, pending"},
+                    "category": {"type": "string", "description": "Category: docker, cloudflare, media, security, bot, database"},
+                    "description": {"type": "string", "description": "Description of the action"},
+                    "status": {"type": "string", "description": "Status: done, pending, failed, in_progress"},
+                    "details": {"type": "string", "description": "Additional details (optional)"},
+                },
+                "required": ["action_type", "category", "description", "status"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_pending",
+            "description": "List all pending items from the shared memory database.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_context",
+            "description": "Update or set a key-value context about the server state.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "key": {"type": "string", "description": "Context key (e.g., disco_sistema, ram, ultima_acao)"},
+                    "value": {"type": "string", "description": "Context value"},
+                },
+                "required": ["key", "value"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "mark_done",
+            "description": "Mark a pending action as completed by its ID.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action_id": {"type": "integer", "description": "The action ID to mark as done"},
+                },
+                "required": ["action_id"],
+            },
+        },
+    },
+])
+
+TOOL_EXECUTORS.update({
+    "get_session_summary": get_session_summary,
+    "add_action": add_action,
+    "get_pending": get_pending,
+    "update_context": update_context,
+    "mark_done": mark_done,
+})

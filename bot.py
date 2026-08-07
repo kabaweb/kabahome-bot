@@ -175,28 +175,39 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     if WEBHOOK_URL:
-        logger.info(f"Tentando modo webhook: {WEBHOOK_URL}")
+        logger.info(f"Tentando registrar webhook: {WEBHOOK_URL}/webhook")
+        webhook_ok = False
         try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(
+                app.bot.set_webhook(
+                    url=f"{WEBHOOK_URL}/webhook",
+                    drop_pending_updates=True,
+                )
+            )
+            loop.close()
+            webhook_info = asyncio.new_event_loop()
+            asyncio.set_event_loop(webhook_info)
+            info = webhook_info.run_until_complete(app.bot.get_webhook_info())
+            webhook_info.close()
+            logger.info(f"Webhook registrado: {info.url}")
+            webhook_ok = True
+        except Exception as e:
+            logger.warning(f"Falha ao registrar webhook: {e}")
+            logger.warning("Usando polling como fallback...")
+            webhook_ok = False
+
+        if webhook_ok:
+            logger.info(f"Iniciando servidor webhook na porta {PORT}...")
             app.run_webhook(
                 listen="0.0.0.0",
                 port=PORT,
                 webhook_url=WEBHOOK_URL,
                 drop_pending_updates=True,
             )
-        except Exception as e:
-            logger.warning(f"Webhook falhou: {e}")
-            logger.warning("Fallback para polling...")
-            app = Application.builder().token(TELEGRAM_TOKEN).build()
-            app.add_handler(CommandHandler("start", start))
-            app.add_handler(CommandHandler("help", help_cmd))
-            app.add_handler(CommandHandler("status", status_cmd))
-            app.add_handler(CommandHandler("discos", discos_cmd))
-            app.add_handler(CommandHandler("ram", ram_cmd))
-            app.add_handler(CommandHandler("containers", containers_cmd))
-            app.add_handler(CommandHandler("servicos", servicos_cmd))
-            app.add_handler(CommandHandler("logs", logs_cmd))
-            app.add_handler(CommandHandler("limpar", limpar_cmd))
-            app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+        else:
+            logger.info("Iniciando em modo polling...")
             app.run_polling(drop_pending_updates=True)
     else:
         logger.info("Iniciando em modo polling...")
