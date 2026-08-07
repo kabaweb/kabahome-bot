@@ -216,11 +216,13 @@ def main():
             info = loop.run_until_complete(app.bot.get_webhook_info())
             logger.info(f"Webhook registrado: {info.url}")
             webhook_ok = True
-            loop.close()
         except Exception as e:
             logger.warning(f"Falha ao registrar webhook: {e}")
             logger.warning("Usando polling como fallback...")
             webhook_ok = False
+
+        # Create a fresh event loop for the application (don't reuse closed one)
+        asyncio.set_event_loop(asyncio.new_event_loop())
 
         if webhook_ok:
             logger.info(f"Iniciando servidor webhook na porta {PORT}...")
