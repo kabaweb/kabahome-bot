@@ -4,7 +4,7 @@ import os
 import json
 import httpx
 from dotenv import load_dotenv
-from prompt import SYSTEM_PROMPT
+from prompt import SYSTEM_PROMPT, DB_CONTEXT_INSTRUCTIONS
 from tools import AVAILABLE_TOOLS, TOOL_EXECUTORS
 
 load_dotenv()
@@ -26,7 +26,7 @@ def get_client() -> httpx.Client:
 
 def chat(chat_id: int, user_message: str) -> str:
     if chat_id not in conversations:
-        conversations[chat_id] = [{"role": "system", "content": SYSTEM_PROMPT}]
+        conversations[chat_id] = [{"role": "system", "content": SYSTEM_PROMPT + DB_CONTEXT_INSTRUCTIONS}]
         if len(conversations) > 100:
             old_keys = sorted(conversations.keys())[:-50]
             for k in old_keys:
