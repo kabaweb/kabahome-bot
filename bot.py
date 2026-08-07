@@ -8,6 +8,30 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Health check server imports
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(b"<h1>Kabahome Bot Online</h1><p>Assistente do servidor kabahome</p>")
+    def do_POST(self):
+        self.send_response(200)
+        self.end_headers()
+    def log_message(self, format, *args):
+        pass  # quiet
+
+def start_health_server(port):
+    """Start a minimal HTTP server for Cloudflare tunnel health checks."""
+    server = HTTPServer(("0.0.0.0", port), HealthHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    print(f"Health check server listening on port {port}")
+    return server
+
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -174,25 +198,29 @@ def main():
     app.add_handler(CommandHandler("limpar", limpar_cmd))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
+    webhook_ok = False
+
     if WEBHOOK_URL:
+        # Start health server FIRST (before webhook attempt)
+        start_health_server(PORT)
+
         logger.info(f"Tentando registrar webhook: {WEBHOOK_URL}")
-        webhook_ok = False
         try:
-            asyncio.run(app.bot.set_webhook(
+            # Use a single event loop for both operations (fixes Event loop is closed bug)
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(app.bot.set_webhook(
                 url=WEBHOOK_URL,
                 drop_pending_updates=True,
             ))
-            info = asyncio.run(app.bot.get_webhook_info())
+            info = loop.run_until_complete(app.bot.get_webhook_info())
             logger.info(f"Webhook registrado: {info.url}")
             webhook_ok = True
+            loop.close()
         except Exception as e:
             logger.warning(f"Falha ao registrar webhook: {e}")
             logger.warning("Usando polling como fallback...")
             webhook_ok = False
-
-        # asyncio.run() closes the event loop, recreate for run_polling/run_webhook
-        new_loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(new_loop)
 
         if webhook_ok:
             logger.info(f"Iniciando servidor webhook na porta {PORT}...")
@@ -203,12 +231,13 @@ def main():
                 drop_pending_updates=True,
             )
         else:
-            logger.info("Iniciando em modo polling...")
+            logger.info("Iniciando em modo polling (health server ja ativo)...")
             app.run_polling(drop_pending_updates=True)
     else:
+        # No webhook URL configured, just polling + health server
+        start_health_server(PORT)
         logger.info("Iniciando em modo polling...")
         app.run_polling(drop_pending_updates=True)
-
 
 if __name__ == "__main__":
     main()
