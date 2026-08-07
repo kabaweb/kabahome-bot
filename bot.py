@@ -175,14 +175,14 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     if WEBHOOK_URL:
-        logger.info(f"Tentando registrar webhook: {WEBHOOK_URL}/webhook")
+        logger.info(f"Tentando registrar webhook: {WEBHOOK_URL}")
         webhook_ok = False
         try:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             loop.run_until_complete(
                 app.bot.set_webhook(
-                    url=f"{WEBHOOK_URL}/webhook",
+                    url=f"{WEBHOOK_URL}",
                     drop_pending_updates=True,
                 )
             )

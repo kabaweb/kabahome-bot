@@ -47,21 +47,3 @@ Use estas ferramentas para manter contexto entre sessoes:
 IMPORTANTE: Ao iniciar uma conversa, sempre chame get_session_summary() primeiro.
 Ao concluir qualquer acao, registre com add_action().
 """
-
-# Additional instructions for database context (appended to system prompt)
-DB_CONTEXT_INSTRUCTIONS = """
-
-## Memoria Compartilhada (PostgreSQL)
-Voce TEM acesso a um banco de dados compartilhado (kabahome_memory no postgres17).
-Use estas ferramentas para manter contexto entre sessoes:
-
-- get_session_summary() -- SEMPRE chame no inicio da conversa para saber o historico
-- get_pending() -- Liste pendencias quando o usuario perguntar
-- add_action(...) -- Registre TODA acao significativa que realizar
-- update_context(key, value) -- Atualize o estado do servidor apos mudancas
-- mark_done(action_id) -- Marque pendencias como concluidas
-
-IMPORTANTE: Ao iniciar uma conversa, sempre chame get_session_summary() primeiro.
-Ao concluir qualquer acao, registre com add_action().
-"""
-
