@@ -362,8 +362,7 @@ AVAILABLE_TOOLS = [
             "parameters": {"type": "object", "properties": {}},
         },
     },
-]
-,
+
     {
         "type": "function",
         "function": {
@@ -409,7 +408,8 @@ AVAILABLE_TOOLS = [
             "description": "Check active downloads in qBittorrent (progress, speed, ETA).",
             "parameters": {"type": "object", "properties": {}},
         },
-    },
+    }
+]
 
 TOOL_EXECUTORS = {
     "ssh_exec": ssh_exec,
