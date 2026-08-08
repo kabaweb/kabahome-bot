@@ -98,6 +98,169 @@ def uptime() -> str:
     return _ssh_exec_raw("uptime")
 
 
+
+
+# --- Sonarr/Radarr Search Tools ---
+import json as _json
+
+SONARR_KEY = "9882c4ebdf0a46f5a0d883815f632da5"
+RADARR_KEY = "3970f7fee58e4177bb0c5109663d9de3"
+
+def search_add_series(query: str, root_folder: str = "/tv") -> str:
+    """Search for a TV series/dorama on Sonarr and add it for download."""
+    try:
+        import httpx
+        resp = httpx.get(
+            f"http://sonarr_sonarr:8989/api/v3/series/lookup?term={query}",
+            headers={"X-Api-Key": SONARR_KEY}, timeout=15
+        )
+        results = resp.json()
+        if not results:
+            return f"Nenhuma serie encontrada para: {query}"
+        
+        s = results[0]
+        tvdb_id = s["tvdbId"]
+        title = s["title"]
+        year = s.get("year", "?")
+        seasons = s.get("seasonCount", "?")
+        overview = s.get("overview", "")[:150]
+        
+        existing = httpx.get(
+            "http://sonarr_sonarr:8989/api/v3/series",
+            headers={"X-Api-Key": SONARR_KEY}, timeout=10
+        ).json()
+        for es in existing:
+            if es.get("tvdbId") == tvdb_id:
+                return f"Serie {title} ({year}) ja esta no Sonarr (ID: {es['id']})"
+        
+        add_resp = httpx.post(
+            "http://sonarr_sonarr:8989/api/v3/series",
+            headers={"X-Api-Key": SONARR_KEY, "Content-Type": "application/json"},
+            json={
+                "tvdbId": tvdb_id,
+                "title": title,
+                "qualityProfileId": 1,
+                "languageProfileId": 1,
+                "seasonFolder": True,
+                "monitored": True,
+                "rootFolderPath": root_folder,
+                "addOptions": {"searchForMissingEpisodes": True}
+            },
+            timeout=15
+        )
+        add_data = add_resp.json()
+        series_id = add_data.get("id")
+        
+        if series_id:
+            httpx.post(
+                "http://sonarr_sonarr:8989/api/v3/command",
+                headers={"X-Api-Key": SONARR_KEY, "Content-Type": "application/json"},
+                json={"name": "SeriesSearch", "seriesId": series_id},
+                timeout=10
+            )
+            return f"Serie '{title} ({year})' adicionada ao Sonarr!\nID: {series_id} | {seasons} temporadas | Pasta: {root_folder}\nBusca automatica iniciada.\nSinopse: {overview}"
+        else:
+            return f"Erro ao adicionar: {_json.dumps(add_data, indent=2)[:300]}"
+    except Exception as e:
+        return f"Erro ao buscar/adicionar serie: {str(e)}"
+
+
+def search_add_movie(query: str, root_folder: str = "/movies") -> str:
+    """Search for a movie on Radarr and add it for download."""
+    try:
+        import httpx
+        resp = httpx.get(
+            f"http://radarr_radarr:7878/api/v3/movie/lookup?term={query}",
+            headers={"X-Api-Key": RADARR_KEY}, timeout=15
+        )
+        results = resp.json()
+        if not results:
+            return f"Nenhum filme encontrado para: {query}"
+        
+        m = results[0]
+        tmdb_id = m["tmdbId"]
+        title = m["title"]
+        year = m.get("year", "?")
+        
+        existing = httpx.get(
+            "http://radarr_radarr:7878/api/v3/movie",
+            headers={"X-Api-Key": RADARR_KEY}, timeout=10
+        ).json()
+        for em in existing:
+            if em.get("tmdbId") == tmdb_id:
+                return f"Filme {title} ({year}) ja esta no Radarr (ID: {em['id']})"
+        
+        add_resp = httpx.post(
+            "http://radarr_radarr:7878/api/v3/movie",
+            headers={"X-Api-Key": RADARR_KEY, "Content-Type": "application/json"},
+            json={
+                "tmdbId": tmdb_id,
+                "title": title,
+                "qualityProfileId": 1,
+                "monitored": True,
+                "rootFolderPath": root_folder,
+                "addOptions": {"searchForMovie": True}
+            },
+            timeout=15
+        )
+        add_data = add_resp.json()
+        movie_id = add_data.get("id")
+        
+        if movie_id:
+            return f"Filme '{title} ({year})' adicionado ao Radarr!\nID: {movie_id} | Pasta: {root_folder}\nBusca automatica iniciada."
+        else:
+            return f"Erro ao adicionar: {_json.dumps(add_data, indent=2)[:300]}"
+    except Exception as e:
+        return f"Erro ao buscar/adicionar filme: {str(e)}"
+
+
+def list_sonarr_series() -> str:
+    """List all series/doramas currently in Sonarr."""
+    try:
+        import httpx
+        resp = httpx.get(
+            "http://sonarr_sonarr:8989/api/v3/series",
+            headers={"X-Api-Key": SONARR_KEY}, timeout=10
+        )
+        series = resp.json()
+        if not series:
+            return "Nenhuma serie no Sonarr."
+        result = [f"=== SERIES NO SONARR ({len(series)}) ==="]
+        for s in series[:20]:
+            stats = s.get("statistics", {})
+            pct = stats.get("percentOfEpisodes", 0)
+            result.append(f"  {s['title']} | {stats.get('episodeFileCount',0)}/{stats.get('episodeCount',0)} eps | {pct}% | {s.get('rootFolderPath','?')}")
+        return "\n".join(result)
+    except Exception as e:
+        return f"Erro: {str(e)}"
+
+
+def check_downloads() -> str:
+    """Check active downloads in qBittorrent."""
+    try:
+        import httpx
+        client = httpx.Client(timeout=15)
+        client.post(
+            "http://qbittorrent_qbittorrent:8080/api/v2/auth/login",
+            data={"username": "kabacorp", "password": "Ed6433@@"}
+        )
+        resp = client.get("http://qbittorrent_qbittorrent:8080/api/v2/torrents/info")
+        torrents = resp.json()
+        if not torrents:
+            return "Nenhum download ativo no qBittorrent."
+        result = [f"=== DOWNLOADS ATIVOS ({len(torrents)}) ==="]
+        for t in torrents:
+            pct = t.get("progress", 0) * 100
+            state = t.get("state", "?")
+            size_mb = t.get("size", 0) // 1048576
+            speed = t.get("dlspeed", 0) // 1024
+            eta = t.get("eta", 0)
+            eta_str = f"{eta//60}min" if eta < 3600 else f"{eta//3600}h{(eta%3600)//60}min"
+            result.append(f"  {t['name'][:60]} | {pct:.0f}% | {state} | {size_mb}MB | {speed}KB/s | ETA:{eta_str}")
+        return "\n".join(result)
+    except Exception as e:
+        return f"Erro ao verificar downloads: {str(e)}"
+
 AVAILABLE_TOOLS = [
     {
         "type": "function",
@@ -200,6 +363,53 @@ AVAILABLE_TOOLS = [
         },
     },
 ]
+,
+    {
+        "type": "function",
+        "function": {
+            "name": "search_add_series",
+            "description": "Search for a TV series or dorama on Sonarr and add it for automatic download.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Name of the series to search for"},
+                    "root_folder": {"type": "string", "description": "Root folder: /tv (normal), /emby_dorama (doramas), /emby_series (existing)"},
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_add_movie",
+            "description": "Search for a movie on Radarr and add it for automatic download.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Name of the movie to search for"},
+                    "root_folder": {"type": "string", "description": "Root folder path. Use /movies for downloads."},
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_sonarr_series",
+            "description": "List all series and doramas currently in Sonarr library.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "check_downloads",
+            "description": "Check active downloads in qBittorrent (progress, speed, ETA).",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
 
 TOOL_EXECUTORS = {
     "ssh_exec": ssh_exec,
@@ -211,6 +421,10 @@ TOOL_EXECUTORS = {
     "portainer_api": portainer_api,
     "docker_restart_service": docker_restart_service,
     "uptime": uptime,
+    "search_add_series": search_add_series,
+    "search_add_movie": search_add_movie,
+    "list_sonarr_series": list_sonarr_series,
+    "check_downloads": check_downloads,
 }
 
 
