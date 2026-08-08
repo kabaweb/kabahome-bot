@@ -21,7 +21,7 @@ def get_client() -> httpx.Client:
     headers = {"Content-Type": "application/json"}
     if OMNIROUTE_API_KEY:
         headers["Authorization"] = f"Bearer {OMNIROUTE_API_KEY}"
-    return httpx.Client(base_url=OMNIROUTE_URL, headers=headers, timeout=120.0)
+    return httpx.Client(base_url=OMNIROUTE_URL, headers=headers, timeout=180.0)
 
 
 def chat(chat_id: int, user_message: str) -> str:
@@ -58,7 +58,7 @@ def _chat_loop(client: httpx.Client, chat_id: int, messages: list[dict], depth: 
                 "messages": messages,
                 "tools": AVAILABLE_TOOLS,
                 "tool_choice": "auto",
-                "max_tokens": 2048,
+                "max_tokens": 4096,
                 "temperature": 0.3,
             },
         )

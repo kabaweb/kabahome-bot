@@ -91,87 +91,152 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Process all text messages through the LLM with robust error handling."""
     user = update.effective_user
     user_id = user.id
     text = update.message.text
 
     if not is_allowed(user_id):
-        await update.message.reply_text("Acesso nao autorizado.")
+        await update.message.reply_text("???? Acesso nao autorizado.")
         return
 
     if text.startswith("/"):
         return
 
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    response = chat(user_id, text)
+    # Send immediate "processing" message so user knows bot is working
+    status_msg = await update.message.reply_text("??? Processando... aguarde um momento.")
 
-    if len(response) > 4000:
-        chunks = [response[i:i+3800] for i in range(0, len(response), 3800)]
-        for i, chunk in enumerate(chunks):
-            prefix = f"({i+1}/{len(chunks)})\n" if len(chunks) > 1 else ""
-            await update.message.reply_text(prefix + chunk, parse_mode=None)
-    else:
-        await update.message.reply_text(response, parse_mode=None)
+    try:
+        # Show typing indicator
+        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
 
+        # Process through LLM (this may take a while)
+        response = chat(user_id, text)
 
+        # Check if response is valid
+        if not response or response.strip() == "":
+            response = "?????? Nao consegui processar sua solicitacao. Tente novamente."
+
+        # Delete the "processing" message
+        try:
+            await status_msg.delete()
+        except Exception:
+            pass
+
+        # Send the real response
+        if len(response) > 4000:
+            chunks = [response[i:i+3800] for i in range(0, len(response), 3800)]
+            for i, chunk in enumerate(chunks):
+                prefix = f"({i+1}/{len(chunks)})\n" if len(chunks) > 1 else ""
+                if i == 0:
+                    await update.message.reply_text(prefix + chunk, parse_mode=None)
+                else:
+                    await context.bot.send_message(
+                        chat_id=update.effective_chat.id,
+                        text=prefix + chunk
+                    )
+        else:
+            await update.message.reply_text(response, parse_mode=None)
+
+    except Exception as e:
+        logger.error(f"Erro ao processar mensagem: {e}")
+        try:
+            await status_msg.edit_text(f"??? Erro ao processar: {str(e)[:200]}\nTente novamente.")
+        except Exception:
+            await update.message.reply_text("??? Ocorreu um erro. Tente novamente.")
 async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not is_allowed(user_id):
         return
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    response = chat(user_id, "Me de um resumo rapido do status do servidor: containers, disco, RAM, uptime. Seja breve.")
-    await update.message.reply_text(response, parse_mode=None)
-
-
+    status_msg = await update.message.reply_text("??? Consultando status...")
+    try:
+        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+        response = get_status()
+        try:
+            await status_msg.delete()
+        except Exception:
+            pass
+        await update.message.reply_text(response, parse_mode=None)
+    except Exception as e:
+        await status_msg.edit_text(f"??? Erro: {str(e)[:200]}")
 async def discos_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not is_allowed(user_id):
         return
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    response = chat(user_id, "Mostre o uso de disco do servidor.")
-    await update.message.reply_text(response, parse_mode=None)
-
-
+    status_msg = await update.message.reply_text("??? Consultando discos...")
+    try:
+        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+        response = get_discos()
+        try:
+            await status_msg.delete()
+        except Exception:
+            pass
+        await update.message.reply_text(response, parse_mode=None)
+    except Exception as e:
+        await status_msg.edit_text(f"??? Erro: {str(e)[:200]}")
 async def ram_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not is_allowed(user_id):
         return
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    response = chat(user_id, "Mostre o uso de RAM do servidor (free -h).")
-    await update.message.reply_text(response, parse_mode=None)
-
-
+    status_msg = await update.message.reply_text("??? Consultando RAM...")
+    try:
+        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+        response = get_ram()
+        try:
+            await status_msg.delete()
+        except Exception:
+            pass
+        await update.message.reply_text(response, parse_mode=None)
+    except Exception as e:
+        await status_msg.edit_text(f"??? Erro: {str(e)[:200]}")
 async def containers_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not is_allowed(user_id):
         return
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    response = chat(user_id, "Liste todos os containers em execucao no servidor.")
-    await update.message.reply_text(response, parse_mode=None)
-
-
+    status_msg = await update.message.reply_text("??? Consultando containers...")
+    try:
+        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+        response = get_containers()
+        try:
+            await status_msg.delete()
+        except Exception:
+            pass
+        await update.message.reply_text(response, parse_mode=None)
+    except Exception as e:
+        await status_msg.edit_text(f"??? Erro: {str(e)[:200]}")
 async def servicos_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not is_allowed(user_id):
         return
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    response = chat(user_id, "Liste todos os servicos Docker Swarm com status das replicas.")
-    await update.message.reply_text(response, parse_mode=None)
-
-
+    status_msg = await update.message.reply_text("??? Consultando servicos...")
+    try:
+        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+        response = get_servicos()
+        try:
+            await status_msg.delete()
+        except Exception:
+            pass
+        await update.message.reply_text(response, parse_mode=None)
+    except Exception as e:
+        await status_msg.edit_text(f"??? Erro: {str(e)[:200]}")
 async def logs_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not is_allowed(user_id):
         return
-    service = " ".join(context.args) if context.args else ""
-    if not service:
+    if not context.args:
         await update.message.reply_text("Uso: /logs <nome-do-servico>")
         return
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    response = chat(user_id, f"Mostre os logs do servico {service} (ultimas 30 linhas).")
-    await update.message.reply_text(response, parse_mode=None)
-
-
+    status_msg = await update.message.reply_text("??? Buscando logs...")
+    try:
+        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+        response = get_logs(" ".join(context.args))
+        try:
+            await status_msg.delete()
+        except Exception:
+            pass
+        await update.message.reply_text(response, parse_mode=None)
+    except Exception as e:
+        await status_msg.edit_text(f"??? Erro: {str(e)[:200]}")
 async def limpar_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not is_allowed(user_id):
