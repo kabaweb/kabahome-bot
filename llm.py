@@ -47,8 +47,8 @@ def chat(chat_id: int, user_message: str) -> str:
 
 
 def _chat_loop(client: httpx.Client, chat_id: int, messages: list[dict], depth: int = 0) -> str:
-    if depth > 5:
-        return "Loop de ferramentas muito longo. Tente uma pergunta mais direta."
+    if depth > 12:
+        return "Muitas operacoes em andamento. Aguarde enquanto processo..."
 
     try:
         resp = client.post(
