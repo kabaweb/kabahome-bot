@@ -312,9 +312,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await status_msg.edit_text("❌ Nao consegui entender o audio. Tente falar mais claramente.")
             return
 
-        await status_msg.edit_text(f"🎤 Entendido: _{text}_
-
-⏳ Processando...", parse_mode="Markdown")
+        await status_msg.edit_text(f"🎤 Entendido: _{text}_\n\n⏳ Processando...", parse_mode="Markdown")
 
         # Process through LLM
         response = chat(user_id, text)
@@ -327,8 +325,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(response) > 4000:
             chunks = [response[i:i+3800] for i in range(0, len(response), 3800)]
             for i, chunk in enumerate(chunks):
-                prefix = f"({i+1}/{len(chunks)})
-" if len(chunks) > 1 else ""
+                prefix = f"({i+1}/{len(chunks)})\n" if len(chunks) > 1 else ""
                 if i == 0:
                     await update.message.reply_text(prefix + chunk, parse_mode=None)
                 else:
