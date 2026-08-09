@@ -40,6 +40,10 @@ from telegram.ext import (
     filters,
     ContextTypes,
 )
+import speech_recognition as sr
+import subprocess
+import tempfile
+import os
 
 from llm import chat, clear_history
 
@@ -63,13 +67,17 @@ logger = logging.getLogger("kabahome-bot")
 
 
 def is_allowed(user_id: int) -> bool:
+    """Verificacao rigorosa: apenas usuarios na lista ALLOWED_USERS podem usar o bot."""
     if not allowed_ids:
-        return True
+        return False  # Se nao ha lista, NINGUEM pode (seguranca maxima)
     return user_id in allowed_ids
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
+    if not is_allowed(user.id):
+        await update.message.reply_text("🚫 Acesso nao autorizado.")
+        return
     await update.message.reply_text(
         f"*Kabahome Bot* - Assistente do servidor\n\n"
         f"Ola, {user.first_name}! Pergunte o que quiser sobre o servidor "
@@ -147,6 +155,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not is_allowed(user_id):
+        await update.message.reply_text("🚫 Acesso nao autorizado.")
         return
     status_msg = await update.message.reply_text("??? Consultando status...")
     try:
@@ -162,6 +171,7 @@ async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def discos_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not is_allowed(user_id):
+        await update.message.reply_text("🚫 Acesso nao autorizado.")
         return
     status_msg = await update.message.reply_text("??? Consultando discos...")
     try:
@@ -177,6 +187,7 @@ async def discos_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def ram_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not is_allowed(user_id):
+        await update.message.reply_text("🚫 Acesso nao autorizado.")
         return
     status_msg = await update.message.reply_text("??? Consultando RAM...")
     try:
@@ -192,6 +203,7 @@ async def ram_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def containers_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not is_allowed(user_id):
+        await update.message.reply_text("🚫 Acesso nao autorizado.")
         return
     status_msg = await update.message.reply_text("??? Consultando containers...")
     try:
@@ -207,6 +219,7 @@ async def containers_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def servicos_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not is_allowed(user_id):
+        await update.message.reply_text("🚫 Acesso nao autorizado.")
         return
     status_msg = await update.message.reply_text("??? Consultando servicos...")
     try:
@@ -222,6 +235,7 @@ async def servicos_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def logs_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not is_allowed(user_id):
+        await update.message.reply_text("🚫 Acesso nao autorizado.")
         return
     if not context.args:
         await update.message.reply_text("Uso: /logs <nome-do-servico>")
@@ -240,9 +254,91 @@ async def logs_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def limpar_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not is_allowed(user_id):
+        await update.message.reply_text("🚫 Acesso nao autorizado.")
         return
     clear_history(user_id)
     await update.message.reply_text("Historico da conversa limpo.")
+
+
+
+async def transcribe_voice(file_path: str) -> str:
+    """Transcribe a voice message to text using Google Speech Recognition."""
+    try:
+        # Converter OGG para WAV (Telegram envia OGG)
+        wav_path = file_path.replace(".ogg", ".wav")
+        subprocess.run(
+            ["ffmpeg", "-i", file_path, "-ar", "16000", "-ac", "1", wav_path, "-y"],
+            capture_output=True, timeout=30
+        )
+
+        recognizer = sr.Recognizer()
+        with sr.AudioFile(wav_path) as source:
+            audio = recognizer.record(source)
+
+        text = recognizer.recognize_google(audio, language="pt-BR")
+        os.remove(wav_path)
+        return text
+    except sr.UnknownValueError:
+        return None
+    except Exception as e:
+        logger.error(f"Erro transcricao: {e}")
+        return None
+
+async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle voice messages."""
+    user = update.effective_user
+    user_id = user.id
+
+    if not is_allowed(user_id):
+        await update.message.reply_text("🚫 Acesso nao autorizado.")
+        return
+
+    status_msg = await update.message.reply_text("🎤 Transcrevendo audio...")
+
+    try:
+        # Download voice file
+        voice = update.message.voice
+        file = await context.bot.get_file(voice.file_id)
+
+        with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp:
+            await file.download_to_drive(tmp.name)
+            ogg_path = tmp.name
+
+        # Transcribe
+        text = await transcribe_voice(ogg_path)
+        os.remove(ogg_path)
+
+        if not text:
+            await status_msg.edit_text("❌ Nao consegui entender o audio. Tente falar mais claramente.")
+            return
+
+        await status_msg.edit_text(f"🎤 Entendido: _{text}_
+
+⏳ Processando...", parse_mode="Markdown")
+
+        # Process through LLM
+        response = chat(user_id, text)
+
+        if not response or response.strip() == "":
+            response = "⚠️ Nao consegui processar sua solicitacao."
+
+        await status_msg.delete()
+
+        if len(response) > 4000:
+            chunks = [response[i:i+3800] for i in range(0, len(response), 3800)]
+            for i, chunk in enumerate(chunks):
+                prefix = f"({i+1}/{len(chunks)})
+" if len(chunks) > 1 else ""
+                if i == 0:
+                    await update.message.reply_text(prefix + chunk, parse_mode=None)
+                else:
+                    await context.bot.send_message(chat_id=update.effective_chat.id, text=prefix + chunk)
+        else:
+            await update.message.reply_text(response, parse_mode=None)
+
+    except Exception as e:
+        logger.error(f"Erro voz: {e}")
+        await status_msg.edit_text(f"❌ Erro ao processar audio: {str(e)[:150]}")
 
 
 def main():
@@ -262,6 +358,7 @@ def main():
     app.add_handler(CommandHandler("logs", logs_cmd))
     app.add_handler(CommandHandler("limpar", limpar_cmd))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(MessageHandler(filters.VOICE, handle_voice))
 
     # Start health check HTTP server for Cloudflare tunnel
     # This prevents 502 Bad Gateway when accessing https://bot.kabaweb.in/
